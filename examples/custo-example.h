@@ -72,7 +72,7 @@ typedef struct {
 	char rs[160];
 } cadu_t;
 
-// this typedef is mandatory (define it as empty struct if you have no record header)
+// this typedef is not mandatory if your records ARE cadus
 typedef struct {
 	double bench_time;
 	double sim_time;

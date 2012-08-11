@@ -59,6 +59,6 @@ sub prep_struct {
         die "The structure definition was not parsed properly:\n$@";
     }
     #Record_hdr_t elements are LittleEndian
-    $c->tag('record_hdr_t', ByteOrder => 'LittleEndian');
+#    $c->tag('record_hdr_t', ByteOrder => 'LittleEndian');
     return $c;
 }

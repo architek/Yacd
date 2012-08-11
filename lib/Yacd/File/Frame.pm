@@ -66,7 +66,7 @@ sub read_frames {
         next FRAME_DECODE unless defined( $raw = read_record( $fin, $config ) );
 
         #Extract record header to pass to upper layer
-        my $rec_head = substr $raw, 0, $c->sizeof('record_hdr_t');
+        my $rec_head = substr $raw, 0, $c->offsetof('record_t','cadu');
 
         #Extract frame
         $raw = substr $raw, $c->offsetof( 'record_t', 'cadu.frame' ), $c->sizeof('frame_t');
