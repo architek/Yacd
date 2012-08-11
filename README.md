@@ -37,8 +37,8 @@ This library allows decoding of CCSDS frames and packets as defined in the PSS/E
             idle_frames=>1,                              #also pass idle frames to callback
             idle_packets=>1,                             #also pass idle packets to callback
             c=>$c,                                       #protocol definition
-	    skip=>13000,                                 #skip n frames (until the next packet)
-	    frame_nr=>20042,                             #decode n frames (until the last packet is finished)
+            skip=>13000,                                 #skip n frames (until the next packet)
+            frame_nr=>20042,                             #decode n frames (until the last packet is finished)
     }
 
     #Launch loop on logfile
