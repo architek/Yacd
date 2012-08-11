@@ -29,7 +29,7 @@ sub tmfe_decode {
     $vc = $frame_hdr->{channel_id}{vcid};
     $dist_vc{$vc}->{n}++;
     if ( $PERCENTAGE and $nf % int( $slice * $PERCENTAGE / 100 ) == 0 ) {
-        print "Progress : " . int( 100 * $nf / $slice ) . "%";
+        print "Progress : " . int( 100 * $nf / $slice ) . "%\n";
     }
 }
 

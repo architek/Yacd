@@ -51,20 +51,20 @@ typedef struct {
       unsigned short fhec;
 } frame_hdr_t;
 
-// this typedef is mandatory and needs to include at least the fhp member
+// this typedef is mandatory and needs to include at least the member fhp
 typedef struct {
       int spare:5;
       int fhp:11;
 } frame_data_field_hdr_t;
 
-// this typedef is mandatory and needs to include at least the data member
+// this typedef is mandatory and needs to include at least the member data
 typedef struct {
 	frame_hdr_t frame_hdr;
 	frame_data_field_hdr_t frame_data_field_hdr;
 	char data[1215];
 } frame_t;
 
-// this typedef is mandatory and needs to include at least the frame memeber
+// this typedef is mandatory and needs to include at least the member frame
 // if the sync is present in your log then it will be checked against 0x1ACFFC1D
 typedef struct {
 	int sync;
@@ -82,7 +82,7 @@ typedef struct {
 	unsigned long rsvd3;
 } record_hdr_t;
 
-// this typedef is mandatory and should not be changed
+// this typedef is mandatory and needs to include at least the member cadu
 typedef struct {
 	record_hdr_t record_hdr;
 	cadu_t cadu;
