@@ -121,8 +121,8 @@ sub read_frames {
                     my $pkt_data_field_hdr =
                       $c->unpack( 'pkt_data_field_hdr_t', substr( $packet_vcid[$vc], $c->sizeof('pkt_hdr_t') ) );
 
-                    #$_->( $c->unpack('pkt_t',$raw), substr($raw,0,$pkt_len), $rec_head ) for @{ $config->{coderefs_packet} };
-                    $_->( $pkt_hdr, $pkt_data_field_hdr, substr( $raw, 0, $pkt_len ), $rec_head ) for @{ $config->{coderefs_packet} };
+                    #$_->( $c->unpack('pkt_t',$raw), substr($packet_vcid[$vc],0,$pkt_len), $rec_head ) for @{ $config->{coderefs_packet} };
+                    $_->( $pkt_hdr, $pkt_data_field_hdr, substr( $packet_vcid[$vc], 0, $pkt_len ), $rec_head ) for @{ $config->{coderefs_packet} };
                 }
             }
         }
