@@ -37,8 +37,8 @@ sub read_frames {
     my ( $filename, $config ) = @_;
 
     my $skip;
-    my $frame_nr    = 0;
-    my @packet_vcid = ("") x 128;    # VC 0..127
+    my $frame_nr     = 0;
+    my @packet_vcid  = ("") x 128;                # VC 0..127
     my $c            = $config->{c};
     my $idle_frames  = $config->{idle_frames};
     my $idle_packets = $config->{idle_packets};
@@ -54,7 +54,7 @@ sub read_frames {
 
     if ( exists $config->{skip} ) {
         $skip = $config->{skip};
-        seek( $fin, $skip * $config->{record_len}, 0 );
+        seek( $fin, $skip * $c->sizeof('record_t'), 0 );
     }
 
   FRAME_DECODE:
@@ -64,15 +64,16 @@ sub read_frames {
 
         #Extract frame from record
         next FRAME_DECODE unless defined( $raw = read_record( $fin, $config ) );
+
         #Extract record header to pass to upper layer
         my $rec_head = substr $raw, 0, $c->sizeof('record_hdr_t');
-        
+
         #Extract frame
         $raw = substr $raw, $c->offsetof( 'record_t', 'cadu.frame' ), $c->sizeof('frame_t');
 
         #Parse frame headers (parsing the complete frame might be time consuming and useless for OID frames)
         my $frame_hdr = $c->unpack( 'frame_hdr_t', $raw );
-        my $frame_data_field_hdr = $c->unpack( 'frame_data_field_hdr_t', substr($raw, $c->sizeof('frame_hdr_t')));
+        my $frame_data_field_hdr = $c->unpack( 'frame_data_field_hdr_t', substr( $raw, $c->sizeof('frame_hdr_t') ) );
         my $fhp = $frame_data_field_hdr->{fhp};
 
         #if we reached the number of frames and we end up on a packet boundary, stop
@@ -91,11 +92,12 @@ sub read_frames {
         next FRAME_DECODE if $fhp == 0b11111111110 and !$idle_frames;
 
         #Execute coderefs
-        $_->( $c->unpack('frame_t', $raw), $raw, $rec_head ) for @{ $config->{coderefs_frame} };
+        #$_->( $c->unpack('frame_t', $raw), $raw, $rec_head ) for @{ $config->{coderefs_frame} };
+        $_->( $frame_hdr, $raw, $rec_head ) for @{ $config->{coderefs_frame} };
         next FRAME_DECODE if $fhp == 0b11111111110;
 
         #Extract frame data
-        $raw = substr $raw, $c->offsetof('frame_t','data'), $c->sizeof('frame_t.data');
+        $raw = substr $raw, $c->offsetof( 'frame_t', 'data' ), $c->sizeof('frame_t.data');
 
         #Start Packet assembly on frame data
         my $vc = $frame_hdr->{channel_id}{vcid};
@@ -111,17 +113,22 @@ sub read_frames {
             $packet_vcid[$vc] .= substr $raw, 0, $fhp;
             if ( length( $packet_vcid[$vc] ) >= $c->sizeof('pkt_hdr_t') ) {
                 my $pkt_hdr = $c->unpack( 'pkt_hdr_t', $packet_vcid[$vc] );
-                my $pkt_len = $pkt_hdr->{pkt_df_length};
+
+                #packet len is packet_datafield_length + sizeof headers +1
+                my $pkt_len = $pkt_hdr->{pkt_df_length} + $c->offsetof( 'pkt_t', 'data' ) + 1;
 
                 if ( length( $packet_vcid[$vc] ) >= $pkt_len ) {
-                    $_->( $c->unpack('pkt_t',$raw), $raw, $rec_head ) for @{ $config->{coderefs_packet} };
+                    my $pkt_data_field_hdr =
+                      $c->unpack( 'pkt_data_field_hdr_t', substr( $packet_vcid[$vc], $c->sizeof('pkt_hdr_t') ) );
+
+                    #$_->( $c->unpack('pkt_t',$raw), substr($raw,0,$pkt_len), $rec_head ) for @{ $config->{coderefs_packet} };
+                    $_->( $pkt_hdr, $pkt_data_field_hdr, substr( $raw, 0, $pkt_len ), $rec_head ) for @{ $config->{coderefs_packet} };
                 }
             }
         }
 
         #Begin decoding following packets
         $raw = substr $raw, $fhp;
-        $packet_vcid[$vc] = "";
 
         my $cont;
         do {
@@ -130,17 +137,21 @@ sub read_frames {
             #Do we have a full packet header
             if ( length($raw) >= $c->sizeof('pkt_hdr_t') ) {
                 my $pkt_hdr = $c->unpack( 'pkt_hdr_t', $raw );
-                my $pkt_len = $pkt_hdr->{pkt_df_length};
+                my $pkt_len = $pkt_hdr->{pkt_df_length} + $c->offsetof( 'pkt_t', 'data' ) + 1;
 
-                if ( length( $raw ) >= $pkt_len ) {
-                    $_->( $c->unpack('pkt_t',$raw), $raw, $rec_head ) for @{ $config->{coderefs_packet} };
+                if ( length($raw) >= $pkt_len ) {
+                    my $pkt_data_field_hdr = $c->unpack( 'pkt_data_field_hdr_t', substr( $raw, $c->sizeof('pkt_hdr_t') ) );
+
+                    #$_->( $c->unpack('pkt_t',$raw), substr($raw,0,$pkt_len), $rec_head ) for @{ $config->{coderefs_packet} };
+                    $_->( $pkt_hdr, $pkt_data_field_hdr, substr( $raw, 0, $pkt_len ), $rec_head ) for @{ $config->{coderefs_packet} };
                     substr( $raw, 0, $pkt_len ) = '';
                     $cont = 1;
                 }
             }
 
-            #Not complete header or packet, push for following frames
         } while ($cont);
+
+        #Not complete header or packet, push for following frames
         $packet_vcid[$vc] = $raw;
     }
 
