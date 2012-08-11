@@ -90,8 +90,6 @@ See http://dev.perl.org/licenses/ for more information.
 
 =cut
 
-}
-
 =head1 AUTHOR
 
 Laurent KISLAIRE, C<< <teebeenator at gmail.com> >>
