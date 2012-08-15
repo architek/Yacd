@@ -12,8 +12,8 @@ Yacd - Module used to decode CCSDS TM
 our $VERSION = '1.0';
 
 require Exporter;
-our @ISA    = qw(Exporter);
-our @EXPORT = qw($VERSION);
+use base qw/Exporter/;
+our @EXPORT_OK = qw($VERSION);
 
 =head1 SYNOPSIS
 
@@ -60,6 +60,9 @@ This library allows decoding of CCSDS frames and packets as defined in the PSS/E
         c=>$c,                                       #protocol definition
         skip=>13000,                                 #skip n frames (until the next packet)
         frame_nr=>20042,                             #decode n frames (until the last packet is finished)
+        full_packet=>0,                              #full packet decoding to coderefs
+        full_frame=>0,                               #full frame decoding to coderefs
+        search_sync=>0,                              #provides sync search when sync missing
     };
 
     #Launch loop on logfile
