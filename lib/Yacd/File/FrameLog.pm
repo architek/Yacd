@@ -1,4 +1,4 @@
-package Yacd::File::Frame;
+package Yacd::File::FrameLog;
 
 use warnings;
 use strict;
@@ -6,7 +6,7 @@ use Carp;
 
 =head1 NAME
 
-Yacd::File::Frame - Module to decode logfile of CCSDS TM logfile record, Cadu, Frame and included packets
+Yacd::File::FrameLog - Module to decode logfile of CCSDS TM logfile record, Cadu, Frame and included packets
 
 =cut
 
@@ -160,7 +160,7 @@ Laurent KISLAIRE, C<< <teebeenator at gmail.com> >>
 
 You can find documentation for this module with the perldoc command.
 
-    perldoc Yacd::File::Frame
+    perldoc Yacd::File::FrameLog
 
 
 =head1 LICENSE AND COPYRIGHT
@@ -176,4 +176,4 @@ See http://dev.perl.org/licenses/ for more information.
 
 =cut
 
-1;    # End of Yacd::File::Frame
+1;    # End of Yacd::File::FrameLog

@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Yacd::File::Frame qw/frames_loop/;
+use Yacd::File::FrameLog qw/frames_loop/;
 use Data::Dumper;
 use Convert::Binary::C;
 use POSIX qw(strftime);
