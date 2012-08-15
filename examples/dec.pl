@@ -1,49 +1,42 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Yacd::File::Frame;
+use Yacd::File::Frame qw/frames_loop/;
 use Data::Dumper;
 use Convert::Binary::C;
+use POSIX qw(strftime);
 
-my $filename = $ARGV[0];
-my $custo = $ARGV[1] // "custo.h";
-my ( $nf, $np ) = ( 0, 0 );
-my ( $vc, %dist_vc, $slice);
 my $PERCENTAGE = 1;
+my ( $nf, $np, $slice );
+my ( $vc, %dist_vc );
 
-my $config = {
-    coderefs_packet => [ \&main::tm_packet_decode, ],
-    coderefs_frame  => [ \&main::tmfe_decode ],
-    c               => prep_struct(),
-};
+sub tl { warn strftime( "%H:%M:%S ", localtime ), ":", @_, "\n"; return;}
 
-sub tm_packet_decode {
-    my ( $pkt_hdr, $pkt_data_field_hdr, $raw, $rec_head ) = @_;
+sub packet_decode {
+    my ( $struct, $raw, $rec_head ) = @_;
+
+    #die Dumper($struct);
+    #warn "Len:", length($raw) ,"\n";
     $np++;
+    return;
 }
 
 sub tmfe_decode {
-    my ( $frame_hdr, $raw, $rec_head ) = @_;
+    my ( $struct, $raw, $rec_head ) = @_;
+
+    #die Dumper($struct);
     $nf++;
 
-    $vc = $frame_hdr->{channel_id}{vcid};
+    #$vc = $struct->{frame_hdr}{channel_id}{vcid};  #Full frame passed
+    $vc = $struct->{channel_id}{vcid};
     $dist_vc{$vc}->{n}++;
     if ( $PERCENTAGE and $nf % int( $slice * $PERCENTAGE / 100 ) == 0 ) {
-        print "Progress : " . int( 100 * $nf / $slice ) . "%\n";
+        tl "Progress : " . int( 100 * $nf / $slice ) . "%";
     }
+    return;
 }
 
-my $sz = -s $filename;
-$slice = $sz / $config->{c}->sizeof('record_t');
-print "Detected $sz bytes, $slice blocks\n";
-
-print "Start";
-read_frames( $filename, $config );
-print Dumper( \%dist_vc );
-print "$np non_idle packets\n";
-print "End";
-
-sub prep_struct {
+sub cbc {
     my $c = eval {
         Convert::Binary::C->new(
             IntSize           => 4,
@@ -53,12 +46,37 @@ sub prep_struct {
             ByteOrder         => 'BigEndian',
             UnsignedChars     => 1,
             UnsignedBitfields => 1,
-        )->parse_file($custo);
+        )->parse_file( $_[0] );
     };
+
     if ($@) {
         die "The structure definition was not parsed properly:\n$@";
     }
+
     #Record_hdr_t elements are LittleEndian
-#    $c->tag('record_hdr_t', ByteOrder => 'LittleEndian');
+    #$c->tag('record_hdr_t', ByteOrder => 'LittleEndian');
     return $c;
 }
+
+my $fname = shift        or die "Error\n  dec.pl logfile [ cfile ]\n";
+my $custo = shift // "custo.h";
+
+my $sz       = -s $fname or die "Can't open $fname";
+
+my $config = {
+    c => cbc($custo),
+    coderefs_packet => [ \&main::packet_decode, ],
+    coderefs_frame  => [ \&main::tmfe_decode ],
+    #    idle_frames     => 1,
+    #    full_packet     => 1,
+    #    full_frame      => 1,
+};
+
+$slice = $sz / $config->{c}->sizeof('record_t');
+
+tl "Start - Detected $sz bytes, $slice blocks\n";
+frames_loop( $config, $fname );
+tl "End - $np non idle packets";
+
+warn Dumper( \%dist_vc ), "\n";
+
