@@ -2,14 +2,15 @@ package Yacd::File::Frame;
 
 use warnings;
 use strict;
+use Carp;
 
 =head1 NAME
 
-Yacd::File::Frame - Module to decode logfile of CCSDS TM Frame and included packets
+Yacd::File::Frame - Module to decode logfile of CCSDS TM logfile record, Cadu, Frame and included packets
 
 =cut
 
-use Data::Dumper;
+use Yacd::Packet qw/parse_packet/;
 
 sub read_record {
     my ( $fin, $config ) = @_;
@@ -18,88 +19,79 @@ sub read_record {
     my $raw;
 
     if ( read( $fin, $raw, $len_record ) != $len_record ) {
-        warn "Incomplete record";
-        return undef;
+        carp "Could not reada full frame record\n";
+        return;
     }
 
-    #If sync, check
     if ( $c->def('sync') ) {
         my $sync_offset = $c->offsetof( 'record_t', 'sync' );
         if ( substr( $raw, $sync_offset, 4 ) ne "\x1a\xcf\xfc\x1d" ) {
-            warn "Record does not contain a SYNC, reading next record";
-            return undef;
+            carp "Record does not contain a SYNC, reading next record";
+            if ( $config->{search_sync} ) {
+            }
+            return;
         }
     }
     return $raw;
 }
 
-sub read_frames {
-    my ( $filename, $config ) = @_;
+sub frames_loop {
+    my ( $config, $filename ) = @_;
 
+    my $c = $config->{c};
     my $skip;
-    my $frame_nr     = 0;
-    my @packet_vcid  = ("") x 128;                # VC 0..127
-    my $c            = $config->{c};
-    my $idle_frames  = $config->{idle_frames};
-    my $idle_packets = $config->{idle_packets};
+    my $frame_nr = 0;
+    my $res_pktdec;
+    my $struct_pktdec = {};
+    my @packet_vcid   = ("") x 128;                # VC 0..127
+                                                   #Forward idle
+    my $idle_frames   = $config->{idle_frames};
+    my $idle_packets  = $config->{idle_packets};
 
-    #Show warnings if user defined a warning subref
-    $config->{output}->{W} = 1;
+    #Full packets and frame decoding
+    my $full_packet = $config->{full_packet};
+    my $full_frame  = $config->{full_frame};
 
-    #Remove buffering - This slows down a lot the process but helps to correlate errors to normal output
-    $| = 1 if $config->{output}->{debug};
-
-    open my $fin, "<", $filename or die "can not open $filename";
+    open my $fin, "<", $filename or croak "Can not open $filename";
     binmode $fin;
 
     if ( exists $config->{skip} ) {
         $skip = $config->{skip};
         seek( $fin, $skip * $c->sizeof('record_t'), 0 );
     }
-
   FRAME_DECODE:
     while ( !eof $fin ) {
-
         my $raw;
 
         #Extract frame from record
-        next FRAME_DECODE unless defined( $raw = read_record( $fin, $config ) );
+        next FRAME_DECODE unless $raw = read_record( $fin, $config );
 
-        #Extract record header to pass to upper layer
-        my $rec_head = substr $raw, 0, $c->offsetof('record_t','cadu');
-
-        #Extract frame
+        #Extract record header, Frame and headers
+        my $rec_hdr = substr $raw, 0, $c->offsetof( 'record_t', 'cadu' );
         $raw = substr $raw, $c->offsetof( 'record_t', 'cadu.frame' ), $c->sizeof('frame_t');
-
-        #Parse frame headers (parsing the complete frame might be time consuming and useless for OID frames)
         my $frame_hdr = $c->unpack( 'frame_hdr_t', $raw );
-        my $frame_data_field_hdr = $c->unpack( 'frame_data_field_hdr_t', substr( $raw, $c->sizeof('frame_hdr_t') ) );
-        my $fhp = $frame_data_field_hdr->{fhp};
+        my $frame_df_hdr = $c->unpack( 'frame_df_hdr_t', substr( $raw, $c->sizeof('frame_hdr_t') ) );
+        my $fhp = $frame_df_hdr->{fhp};
 
-        #if we reached the number of frames and we end up on a packet boundary, stop
+        #skip and such  until end of packet reached
         return $frame_nr if defined $config->{frame_nr} and $frame_nr >= $config->{frame_nr} and $fhp != 0b11111111111;
-
-        #if we were requested to skip frames, skip until next packet boundary (or OID frame)
-        if ( defined $skip ) {
+        if ($skip) {
             next FRAME_DECODE if $fhp == 0b11111111111;
-            $skip = undef;
+            $skip = 0;
+        }
+        $frame_nr++;
+        next FRAME_DECODE if $fhp == 0b11111111110 && !$idle_frames;
+
+        if ($full_frame) {
+            $_->( $c->unpack( 'frame_t', $raw ), $raw, $rec_hdr ) for @{ $config->{coderefs_frame} };
+        }
+        else {
+            $_->( $frame_hdr, $raw, $rec_hdr ) for @{ $config->{coderefs_frame} };
         }
 
-        #Process frames
-        $frame_nr++;
-
-        #Skip OID frames
-        next FRAME_DECODE if $fhp == 0b11111111110 and !$idle_frames;
-
-        #Execute coderefs
-        #$_->( $c->unpack('frame_t', $raw), $raw, $rec_head ) for @{ $config->{coderefs_frame} };
-        $_->( $frame_hdr, $raw, $rec_head ) for @{ $config->{coderefs_frame} };
+        #Extract frame data for non OID
         next FRAME_DECODE if $fhp == 0b11111111110;
-
-        #Extract frame data
         $raw = substr $raw, $c->offsetof( 'frame_t', 'data' ), $c->sizeof('frame_t.data');
-
-        #Start Packet assembly on frame data
         my $vc = $frame_hdr->{channel_id}{vcid};
 
         #Frame does not finish packet, append and go to next frame
@@ -111,45 +103,22 @@ sub read_frames {
         #There is a packet beginning in this frame, finalize current
         if ( length( $packet_vcid[$vc] ) ) {
             $packet_vcid[$vc] .= substr $raw, 0, $fhp;
-            if ( length( $packet_vcid[$vc] ) >= $c->sizeof('pkt_hdr_t') ) {
-                my $pkt_hdr = $c->unpack( 'pkt_hdr_t', $packet_vcid[$vc] );
-
-                #packet len is packet_datafield_length + sizeof headers +1
-                my $pkt_len = $pkt_hdr->{pkt_df_length} + $c->offsetof( 'pkt_t', 'data' ) + 1;
-
-                if ( length( $packet_vcid[$vc] ) >= $pkt_len ) {
-                    my $pkt_data_field_hdr =
-                      $c->unpack( 'pkt_data_field_hdr_t', substr( $packet_vcid[$vc], $c->sizeof('pkt_hdr_t') ) );
-
-                    #$_->( $c->unpack('pkt_t',$raw), substr($packet_vcid[$vc],0,$pkt_len), $rec_head ) for @{ $config->{coderefs_packet} };
-                    $_->( $pkt_hdr, $pkt_data_field_hdr, substr( $packet_vcid[$vc], 0, $pkt_len ), $rec_head ) for @{ $config->{coderefs_packet} };
-                }
+            my $pkt_len = parse_packet( $c, $packet_vcid[$vc], $full_packet, \$res_pktdec, $struct_pktdec );
+            if ( $res_pktdec == 2 ) {
+                $_->( $struct_pktdec, substr( $packet_vcid[$vc], 0, $pkt_len ), $rec_hdr ) for @{ $config->{coderefs_packet} };
             }
         }
 
-        #Begin decoding following packets
+        #Begin decoding following packets **pointed to by FHP**
         $raw = substr $raw, $fhp;
 
-        my $cont;
         do {
-            $cont = 0;
-
-            #Do we have a full packet header
-            if ( length($raw) >= $c->sizeof('pkt_hdr_t') ) {
-                my $pkt_hdr = $c->unpack( 'pkt_hdr_t', $raw );
-                my $pkt_len = $pkt_hdr->{pkt_df_length} + $c->offsetof( 'pkt_t', 'data' ) + 1;
-
-                if ( length($raw) >= $pkt_len ) {
-                    my $pkt_data_field_hdr = $c->unpack( 'pkt_data_field_hdr_t', substr( $raw, $c->sizeof('pkt_hdr_t') ) );
-
-                    #$_->( $c->unpack('pkt_t',$raw), substr($raw,0,$pkt_len), $rec_head ) for @{ $config->{coderefs_packet} };
-                    $_->( $pkt_hdr, $pkt_data_field_hdr, substr( $raw, 0, $pkt_len ), $rec_head ) for @{ $config->{coderefs_packet} };
-                    substr( $raw, 0, $pkt_len ) = '';
-                    $cont = 1;
-                }
+            my $pkt_len = parse_packet( $c, $raw, $full_packet, \$res_pktdec, $struct_pktdec );
+            if ( $res_pktdec == 2 ) {
+                $_->( $struct_pktdec, substr( $raw, 0, $pkt_len ), $rec_hdr ) for @{ $config->{coderefs_packet} };
+                substr( $raw, 0, $pkt_len, '' );
             }
-
-        } while ($cont);
+        } while ( $res_pktdec == 2 );
 
         #Not complete header or packet, push for following frames
         $packet_vcid[$vc] = $raw;
@@ -160,13 +129,15 @@ sub read_frames {
 }
 
 require Exporter;
-our @ISA    = qw(Exporter);
-our @EXPORT = qw(read_frames);
+
+#our @ISA    = qw(Exporter);
+use base qw(Exporter);
+our @EXPORT_OK = qw(read_record frames_loop);
 
 =head1 SYNOPSIS
 
-This module allows to read a binary file containing blocks. Each block contains one TM Frame.
-Frames are decoded and so are included packets. First Header Pointer is used to find packets, detect incoherency and resynchronise if needed.
+This module allows to read a binary file containing blocks of cadu or frames.
+Frames are decoded and so are included packets. 
 
 The module expects a filename and a configuration describing:
     - Code references for frames: After each decoded frame, a list of subs can be called
@@ -175,7 +146,7 @@ The module expects a filename and a configuration describing:
 
 =head1 EXPORTS
 
-=head2 read_frames()
+=head2 frames_loop(config, filename)
 
  Given a file name of X blocks containing frames, return number of frames read from the file or -1 on incomplete read.
  After each decoded frame,  call a list of plugin passed in $config.
@@ -189,7 +160,7 @@ Laurent KISLAIRE, C<< <teebeenator at gmail.com> >>
 
 You can find documentation for this module with the perldoc command.
 
-    perldoc Yacd
+    perldoc Yacd::File::Frame
 
 
 =head1 LICENSE AND COPYRIGHT
