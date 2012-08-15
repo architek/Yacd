@@ -9,7 +9,7 @@ Yacd - Module used to decode CCSDS TM
 
 =cut
 
-our $VERSION = '1.0';
+our $VERSION = '1.2';
 
 require Exporter;
 use base qw/Exporter/;
