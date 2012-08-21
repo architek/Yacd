@@ -1,3 +1,5 @@
+[![Build Status](https://secure.travis-ci.org/architek/Yacd.png?branch=master)](http://travis-ci.org/architek/Yacd)
+
 This library allows decoding of CCSDS frames and packets as defined in the PSS/ECSS standards.
 
     use Yacd;
