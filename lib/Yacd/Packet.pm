@@ -9,6 +9,27 @@ Yacd::Packet - Module to decode a packet..
 
 =cut
 
+# BEGIN block is necessary here so that other modules can use the constants.
+use vars qw( @EXPORT_OK %EXPORT_TAGS );
+BEGIN {
+    use Exporter qw( import );
+    @EXPORT_OK   = qw/parse_packet/;
+    %EXPORT_TAGS = (
+        ERROR_CODES => [ qw(
+            YA_PACKET_NONE
+            YA_PACKET_HEAD
+            YA_PACKET_COMP
+            ) ],
+    );
+
+    # Add all the constant names and error code names to @EXPORT_OK
+    Exporter::export_ok_tags( qw( ERROR_CODES ) );
+}
+
+use constant YA_PACKET_NONE => 0;
+use constant YA_PACKET_HEAD => 1;
+use constant YA_PACKET_COMP => 2;
+
 sub parse_packet {
     my ( $c, $raw, $full_packet, $res, $r_struct ) = @_;
     my $pkt_len;
@@ -20,28 +41,24 @@ sub parse_packet {
         $pkt_len = $pkt_hdr->{pkt_df_length} + $c->offsetof( 'pkt_t', 'data' ) + 1;
 
         if ( length($raw) >= $pkt_len ) {
-            if ($full_packet) {
+            if ( $full_packet ) {
                 $r_struct->{pkt} = $c->unpack( 'pkt_t', $raw );
             }
             else {
                 $r_struct->{pkt_hdr} = $pkt_hdr;
                 $r_struct->{pkt_data_field_hdr} = $c->unpack( 'pkt_data_field_hdr_t', substr( $raw, $c->sizeof('pkt_hdr_t') ) );
             }
-            $$res = 2;
+            $$res = YA_PACKET_COMP;
         }
         else {
-            $$res = 1;
+            $$res = YA_PACKET_HEAD;
         }
     }
     else {
-        $$res = 0;
+        $$res = YA_PACKET_NONE;
     }
     return $pkt_len;
 }
-
-require Exporter;
-use base qw/Exporter/ ;
-our @EXPORT_OK = qw(parse_packet);
 
 =head1 SYNOPSIS
 

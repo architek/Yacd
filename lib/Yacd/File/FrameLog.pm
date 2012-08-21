@@ -1,4 +1,4 @@
-package Yacd::File::Frame;
+package Yacd::File::FrameLog;
 
 use warnings;
 use strict;
@@ -6,11 +6,29 @@ use Carp;
 
 =head1 NAME
 
-Yacd::File::Frame - Module to decode logfile of CCSDS TM logfile record, Cadu, Frame and included packets
+Yacd::File::FrameLog - Module to decode logfile of CCSDS TM logfile record, Cadu, Frame and included packets
 
 =cut
 
-use Yacd::Packet qw/parse_packet/;
+# BEGIN block is necessary here so that other modules can use the constants.
+use vars qw( @EXPORT_OK %EXPORT_TAGS );
+BEGIN {
+    use Exporter qw( import );
+    @EXPORT_OK   = qw/read_record frames_loop/;
+    %EXPORT_TAGS = (
+        CONSTANTS => [ qw( SYNC) ],
+        ERROR_CODES => [ qw( YA_READ) ],
+
+    );
+
+    # Add all the constant names and error code names to @EXPORT_OK
+    Exporter::export_ok_tags( qw( CONSTANTS ERROR_CODES) );
+}
+
+use constant SYNC            => "\x1a\xcf\xfc\x1d";
+use constant YA_READ         => 0;
+
+use Yacd::Packet qw/parse_packet :ERROR_CODES/;
 
 sub read_record {
     my ( $fin, $config ) = @_;
@@ -19,17 +37,17 @@ sub read_record {
     my $raw;
 
     if ( read( $fin, $raw, $len_record ) != $len_record ) {
-        carp "Could not reada full frame record\n";
-        return;
+        carp "Could not read a full frame record\n";
+        return YA_READ;
     }
 
     if ( $c->def('sync') ) {
         my $sync_offset = $c->offsetof( 'record_t', 'sync' );
-        if ( substr( $raw, $sync_offset, 4 ) ne "\x1a\xcf\xfc\x1d" ) {
+        if ( substr $raw, $sync_offset, 4 ne SYNC ) {
             carp "Record does not contain a SYNC, reading next record";
             if ( $config->{search_sync} ) {
             }
-            return;
+            return YA_READ;
         }
     }
     return $raw;
@@ -39,12 +57,13 @@ sub frames_loop {
     my ( $config, $filename ) = @_;
 
     my $c = $config->{c};
-    my $skip;
-    my $frame_nr = 0;
     my $res_pktdec;
     my $struct_pktdec = {};
     my @packet_vcid   = ("") x 128;                # VC 0..127
                                                    #Forward idle
+    my $frame_nr = 0;
+    my $skip = $config->{skip};
+
     my $idle_frames   = $config->{idle_frames};
     my $idle_packets  = $config->{idle_packets};
 
@@ -55,10 +74,7 @@ sub frames_loop {
     open my $fin, "<", $filename or croak "Can not open $filename";
     binmode $fin;
 
-    if ( exists $config->{skip} ) {
-        $skip = $config->{skip};
-        seek( $fin, $skip * $c->sizeof('record_t'), 0 );
-    }
+    seek( $fin, $skip * $c->sizeof('record_t'), 0 ) if $skip;
   FRAME_DECODE:
     while ( !eof $fin ) {
         my $raw;
@@ -67,13 +83,13 @@ sub frames_loop {
         next FRAME_DECODE unless $raw = read_record( $fin, $config );
 
         #Extract record header, Frame and headers
-        my $rec_hdr = substr $raw, 0, $c->offsetof( 'record_t', 'cadu' );
-        $raw = substr $raw, $c->offsetof( 'record_t', 'cadu.frame' ), $c->sizeof('frame_t');
-        my $frame_hdr = $c->unpack( 'frame_hdr_t', $raw );
-        my $frame_df_hdr = $c->unpack( 'frame_df_hdr_t', substr( $raw, $c->sizeof('frame_hdr_t') ) );
-        my $fhp = $frame_df_hdr->{fhp};
+        my $rec_hdr      = substr $raw, 0, $c->offsetof( 'record_t', 'cadu' );
+        $raw             = substr $raw, $c->offsetof( 'record_t', 'cadu.frame' ), $c->sizeof('frame_t');
+        my $frame_hdr    = $c->unpack( 'frame_hdr_t', $raw );
+        my $frame_df_hdr = $c->unpack( 'frame_df_hdr_t', substr $raw, $c->sizeof('frame_hdr_t') );
+        my $fhp          = $frame_df_hdr->{fhp};
 
-        #skip and such  until end of packet reached
+        #skip and such
         return $frame_nr if defined $config->{frame_nr} and $frame_nr >= $config->{frame_nr} and $fhp != 0b11111111111;
         if ($skip) {
             next FRAME_DECODE if $fhp == 0b11111111111;
@@ -104,7 +120,7 @@ sub frames_loop {
         if ( length( $packet_vcid[$vc] ) ) {
             $packet_vcid[$vc] .= substr $raw, 0, $fhp;
             my $pkt_len = parse_packet( $c, $packet_vcid[$vc], $full_packet, \$res_pktdec, $struct_pktdec );
-            if ( $res_pktdec == 2 ) {
+            if ( $res_pktdec == YA_PACKET_COMP ) {
                 $_->( $struct_pktdec, substr( $packet_vcid[$vc], 0, $pkt_len ), $rec_hdr ) for @{ $config->{coderefs_packet} };
             }
         }
@@ -118,7 +134,7 @@ sub frames_loop {
                 $_->( $struct_pktdec, substr( $raw, 0, $pkt_len ), $rec_hdr ) for @{ $config->{coderefs_packet} };
                 substr( $raw, 0, $pkt_len, '' );
             }
-        } while ( $res_pktdec == 2 );
+        } while ( $res_pktdec == YA_PACKET_COMP );
 
         #Not complete header or packet, push for following frames
         $packet_vcid[$vc] = $raw;
@@ -127,12 +143,6 @@ sub frames_loop {
     close $fin;
     return $frame_nr;
 }
-
-require Exporter;
-
-#our @ISA    = qw(Exporter);
-use base qw(Exporter);
-our @EXPORT_OK = qw(read_record frames_loop);
 
 =head1 SYNOPSIS
 
@@ -149,8 +159,7 @@ The module expects a filename and a configuration describing:
 =head2 frames_loop(config, filename)
 
  Given a file name of X blocks containing frames, return number of frames read from the file or -1 on incomplete read.
- After each decoded frame,  call a list of plugin passed in $config.
- After each decoded packet, call a list of plugin passed in $config.
+ After each decoded frame and packet,  call a list of plugin passed in $config.
 
 =head1 AUTHOR
 
@@ -160,7 +169,7 @@ Laurent KISLAIRE, C<< <teebeenator at gmail.com> >>
 
 You can find documentation for this module with the perldoc command.
 
-    perldoc Yacd::File::Frame
+    perldoc Yacd::File::FrameLog
 
 
 =head1 LICENSE AND COPYRIGHT
@@ -176,4 +185,4 @@ See http://dev.perl.org/licenses/ for more information.
 
 =cut
 
-1;    # End of Yacd::File::Frame
+1;    # End of Yacd::File::FrameLog

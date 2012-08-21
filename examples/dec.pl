@@ -1,13 +1,13 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Yacd::File::Frame qw/frames_loop/;
+use Yacd::File::FrameLog qw/frames_loop/;
 use Data::Dumper;
 use Convert::Binary::C;
 use POSIX qw(strftime);
 
 my $PERCENTAGE = 1;
-my ( $nf, $np, $slice );
+my ( $nff, $nf, $np, $slice );
 my ( $vc, %dist_vc );
 
 sub tl { warn strftime( "%H:%M:%S ", localtime ), ":", @_, "\n"; return;}
@@ -75,8 +75,8 @@ my $config = {
 $slice = $sz / $config->{c}->sizeof('record_t');
 
 tl "Start - Detected $sz bytes, $slice blocks\n";
-frames_loop( $config, $fname );
-tl "End - $np non idle packets";
+$nff=frames_loop( $config, $fname );
+tl "End - $nff frames, $nf non idle frames, $np non idle packets";
 
 warn Dumper( \%dist_vc ), "\n";
 
