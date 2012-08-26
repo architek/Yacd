@@ -36,12 +36,10 @@ sub parse_packet {
 
     if ( length($raw) >= $c->sizeof('pkt_hdr_t') ) {
         my $pkt_hdr = $c->unpack( 'pkt_hdr_t', $raw );
-
-        #packet len is packet_datafield_length + sizeof headers +1
-        $pkt_len = $pkt_hdr->{pkt_df_length} + $c->offsetof( 'pkt_t', 'data' ) + 1;
-
+        $pkt_len = $pkt_hdr->{pkt_df_length} + $c->sizeof('pkt_hdr_t') + 1;
         if ( length($raw) >= $pkt_len ) {
             if ( $full_packet ) {
+                $c->tag('pkt_df_t.data', Dimension => $pkt_len - $c->offsetof('pkt_t','pkt_df.data') );
                 $r_struct->{pkt} = $c->unpack( 'pkt_t', $raw );
             }
             else {
