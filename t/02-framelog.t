@@ -16,8 +16,8 @@ BEGIN {
         require "$Bin/Custo.pm";
         require Ccsds::TM::Frame;
         require Ccsds::TM::SourcePacket;
-        use Ccsds::Utils qw/patch_crc is_idle/;
-        use CcsdsTools::Cadu::CaduGen;
+        require Ccsds::Utils;
+        require CcsdsTools::Cadu::CaduGen;
     };
     if ($@) {
         plan skip_all => 'Test not done: CcsdsTools or Ccsds not present';
@@ -243,7 +243,7 @@ sub mod_def {
     #LEN
     my $len       = get_next_len;
     my $ccsds_len = $len - 1 + $pkt->{'Packet Data Field'}{TMSourceSecondaryHeader}{Length};
-    $ccsds_len += 2 unless is_idle($pkt);
+    $ccsds_len += 2 unless Ccsds::Utils::is_idle($pkt);
     $ph->{'Packet Sequence Control'}{'Packet Length'} = $ccsds_len;
 
     #OBT
@@ -261,7 +261,7 @@ sub mod_def {
 sub gen_next_pkt {
     my %pkt = @_;
     my $raw = $Ccsds::TM::SourcePacket::TMSourcePacket->build( \%pkt );
-    patch_crc( \$raw ) if $pkt{'Has Crc'};
+    Ccsds::Utils::patch_crc( \$raw ) if $pkt{'Has Crc'};
     return $raw;
 }
 
