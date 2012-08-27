@@ -2,6 +2,10 @@
 
 This library allows decoding of CCSDS frames and packets as defined in the PSS/ECSS standards.
 
+As the underlying library (Convert::Binary::C) is written in C, performance is greatly improved compared to Ccsds framework.
+
+On an Intel(R) Core(TM) i3 CPU M 350  @ 2.27GHz, decoding was observed at a speed of 60MB/s.
+
     use Yacd;
     use Data::Dumper;
     use Convert::Binary::C;
