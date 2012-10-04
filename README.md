@@ -6,10 +6,15 @@ As the underlying library (Convert::Binary::C) is written in C, performance is g
 On an Intel(R) Core(TM) i3 CPU M 350  @ 2.27GHz, decoding was observed at a speed of 60MB/s.
 
 Easy Install (in Windows, simply do not put sudo)
+
 	cpan Module::Install   <------ used by Makefile.PL
+
 	perl Makefile.PL
+
 	sudo make              <------ the sudo here is required as this will install all dependencies
+
 	sudo make install
+
 
 Example of use:
 
