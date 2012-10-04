@@ -134,7 +134,7 @@ sub frames_loop {    #$frame_nr($configuration,$filename)
 
         do {
             my $pkt_len = parse_packet( $c, $raw, $full_packet, \$res_pktdec, $struct_pktdec );
-            if ( $res_pktdec == 2 ) {
+            if ( $res_pktdec == YA_PACKET_COMP ) {
                 $_->( $struct_pktdec, substr( $raw, 0, $pkt_len ), $rec_hdr ) for @{ $config->{coderefs_packet} };
                 substr( $raw, 0, $pkt_len, '' );
             }
