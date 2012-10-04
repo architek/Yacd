@@ -2,7 +2,15 @@
 
 This library allows decoding of CCSDS frames and packets as defined in the PSS/ECSS standards.
 
-    use Yacd;
+Easy Install (in Windows, simply do not put sudo)
+	cpan Module::Install   <------ used by Makefile.PL
+	perl Makefile.PL
+	sudo make              <------ the sudo here is required as this will install all dependencies
+	sudo make install
+
+Example of use:
+
+    use Yacd::File::FrameLog qw/frames_loop/;
     use Data::Dumper;
     use Convert::Binary::C;
 
@@ -19,14 +27,11 @@ This library allows decoding of CCSDS frames and packets as defined in the PSS/E
     #Load Customization of protocol
     my $c = eval {
     Convert::Binary::C->new(
-        IntSize=>4,
-        ShortSize=>2,
-        Alignment=>1,
-        CompoundAlignment=>1,
+        IntSize=>4, ShortSize=>2,
+        Alignment=>1, CompoundAlignment=>1,
         ByteOrder=>'BigEndian',
-        UnsignedChars=>1,
-        UnsignedBitfields=>1,
-        #OrderMembers=>1,   # requires Tie::Hash::Indexed to minimize performance decrease (min x3!)
+        UnsignedChars=>1, UnsignedBitfields=>1,
+        #OrderMembers=>1,   # requires Tie::Hash::Indexed (huge performance loss)
         ) ->parse_file('custo.h')
     };
 
